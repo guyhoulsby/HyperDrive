@@ -7,4 +7,8 @@ Hyperdrive may be used for academic and research purposes but not for any commer
 
 Documentation of HyperDrive can be found in "HyperDrive documentation.pdf".
 
-HyperDrive also makes use of HyperUtils and a code for checking models HyperCheck.
+HyperDrive also makes use of HyperCommands, HyperUtils and a code for checking models HyperCheck.
+
+A number of simple models are also now available on this site.
+
+For more information on hyperplasticity see hyperplasticity.wordpress.com
