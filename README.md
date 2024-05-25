@@ -7,8 +7,6 @@ HyperDrive may be used for academic and research purposes but not for any commer
 
 Documentation of HyperDrive can be found in "HyperDrive documentation.pdf". Whilst I attempt to keep this up-to-date, sometimes it lags behind the code development.
 
-HyperDrive used to require the additional files HyperCommands, HyperUtils and HyperCheck, but those are now all bundled into the single HyperDrive file. The new version also allows automatic differentiation using autograd.
-
-A number of simple models are also now available on this site. The code for most of these may need some small changes to accommodate the latest version of HyperDrive.
+A number of simple models are also now available on this site. 
 
 For more information on hyperplasticity see hyperplasticity.wordpress.com
