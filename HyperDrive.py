@@ -31,9 +31,9 @@ def weight_dydc(dydc):
     return temp
 
 class Ein: # Einsein summation shorthand, several products now replaced by @
-    #chi  = "N,Ni->Ni"   # for weight calculation
+    chi  = "N,Ni->Ni"   # for weight calculation
     dydc = "N,MNi->MNi" # for weight calculation
-    #b = "ki,i->k"
+    b = "ki,i->k"
     c = "imj,mj->i"
     d = "N,Nmi->mi"
     #e = "Ni,i->N"
@@ -2344,8 +2344,8 @@ def general_inc_f_r(Smat, Emat, dTdt, dt): # updated for weights
     d2fdeda_ = d2fdeda(s.eps,s.alp)
     #P = np.linalg.inv(Emat + np.einsum("ij,jk->ik", Smat, d2fdede_))
     P = np.linalg.inv(Emat + (Smat @ d2fdede_))
-    #dalp  = np.einsum(Ein.chi, hj.rwt, dwdc_)*dt
-    dalp  = (hj.rwt @ dwdc_)*dt
+    dalp  = np.einsum(Ein.chi, hj.rwt, dwdc_)*dt
+    #dalp  = (hj.rwt @ dwdc_)*dt
     #deps = np.einsum(Ein.b, P, (dTdt - np.einsum("ij,mjk,mk->i", Smat, d2fdeda_, dalp)))
     deps = P @ (dTdt - np.einsum("ij,mjk,mk->i", Smat, d2fdeda_, dalp))
     update_f(dt, deps, dalp)
@@ -2356,8 +2356,8 @@ def general_inc_g_r(Smat, Emat, dTdt, dt): # updated for weights
     d2gdsda_ = d2gdsda(s.sig,s.alp)
     #Q = np.linalg.inv(Smat - np.einsum("ij,jk->ik", Emat, d2gdsds_))
     Q = np.linalg.inv(Smat - (Emat @ d2gdsds_))
-    #dalp  = np.einsum(Ein.chi, hj.rwt, dwdc_)*dt
-    dalp  = (hj.rwt @ dwdc_)*dt
+    dalp  = np.einsum(Ein.chi, hj.rwt, dwdc_)*dt
+    #dalp  = (hj.rwt @ dwdc_)*dt
     #dsig = np.einsum(Ein.b, Q, (dTdt + np.einsum("ij,mjk,mk->i", Emat, d2gdsda_, dalp)))
     dsig = Q @ (dTdt + np.einsum("ij,mjk,mk->i", Emat, d2gdsda_, dalp))
     update_g(dt, dsig, dalp)
@@ -2365,14 +2365,14 @@ def general_inc_g_r(Smat, Emat, dTdt, dt): # updated for weights
 def strain_inc_f_r(deps, dt): # updated for weights
     inc_mess("strain_inc_f_r")
     dwdc_ = dwdc(s.eps,s.sig,s.alp,s.chi)
-    #dalp  = np.einsum(Ein.chi, hj.rwt, dwdc_)*dt
-    dalp  = (hj.rwt @ dwdc_)*dt
+    dalp  = np.einsum(Ein.chi, hj.rwt, dwdc_)*dt
+    #dalp  = (hj.rwt @ dwdc_)*dt
     update_f(dt, deps, dalp)
 def stress_inc_g_r(dsig, dt): # updated for weights
     inc_mess("stress_inc_g_r")
     dwdc_ = dwdc(s.eps,s.sig,s.alp,s.chi)
-    #dalp  = np.einsum(Ein.chi, hj.rwt, dwdc_)*dt
-    dalp  = (hj.rwt @ dwdc_)*dt
+    dalp  = np.einsum(Ein.chi, hj.rwt, dwdc_)*dt
+    #dalp  = (hj.rwt @ dwdc_)*dt
     update_g(dt, dsig, dalp)
 
 def strain_inc_g_r(deps, dt): # updated for weights
@@ -2381,8 +2381,8 @@ def strain_inc_g_r(deps, dt): # updated for weights
     d2gdsds_ = d2gdsds(s.sig,s.alp)
     d2gdsda_ = d2gdsda(s.sig,s.alp)
     D = -np.linalg.inv(d2gdsds_)
-    #dalp = np.einsum(Ein.chi, hj.rwt, dwdc_)*dt
-    dalp = (hj.rwt @ dwdc_)*dt
+    dalp = np.einsum(Ein.chi, hj.rwt, dwdc_)*dt
+    #dalp = (hj.rwt @ dwdc_)*dt
     #dsig = np.einsum(Ein.b, D, (deps + np.einsum(Ein.c, d2gdsda_, dalp)))
     dsig = D @ (deps + np.einsum(Ein.c, d2gdsda_, dalp))
     update_g(dt, dsig, dalp)
@@ -2392,8 +2392,8 @@ def stress_inc_f_r(dsig, dt): # updated for weights
     d2fdede_ = d2fdede(s.eps,s.alp)
     d2fdeda_ = d2fdeda(s.eps,s.alp)
     C = np.linalg.inv(d2fdede_)
-    #dalp = np.einsum(Ein.chi, hj.rwt, dwdc_)*dt
-    dalp = (hj.rwt @ dwdc_)*dt
+    dalp = np.einsum(Ein.chi, hj.rwt, dwdc_)*dt
+    #dalp = (hj.rwt @ dwdc_)*dt
     #deps = np.einsum(Ein.b, C, (dsig - np.einsum(Ein.c, d2fdeda_, dalp)))
     deps = C @ (dsig - np.einsum(Ein.c, d2fdeda_, dalp))
     update_f(dt, deps, dalp)
