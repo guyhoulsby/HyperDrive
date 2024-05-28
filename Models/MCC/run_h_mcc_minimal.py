@@ -1,0 +1,12 @@
+from HyperDrive import Commands as H
+H.f_form()
+H.model("h_mcc_minimal")
+H.start()
+H.init_strain([0.0, 0.0])
+H.stress_targ(1.0, [200.0, 0.0], 10, 20)
+H.stress_targ(1.0, [190.0, 0.0],  5, 20)
+H.strain_inc(1.0, [0.0, 0.1],   100, 20)
+H.plotCS()
+H.graph("p","q")
+H.graph("eps_s","q")
+H.end()
