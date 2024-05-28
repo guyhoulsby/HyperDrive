@@ -8,7 +8,7 @@ are also available with tags _ser_b, _par_b, _nest_b.
 
 ### Test files:
 
-__run_rate__: Allows comparison of madels implemented using rate-independent and rate-dependent formulations.
+__run_rate__: Allows comparison of models implemented using rate-independent and rate-dependent formulations.
 
 __run_spiral__: Implements a spiral stress path for each model for comparison. Uses a data file "spiralpath.csv" to 
 implement the spiral. Note that the default parameter settings for the models that are compared are chosen so that 
