@@ -9,17 +9,17 @@ implement these and their derivatives.
 ### Models:
 
 Mises: a basic elastic-perfectly plastic von Mises model. Requires just three constants: 
-- K (bulk modulus), 
-- G (shear modulus),  
-- k (shear strength)
+- _K_ (bulk modulus), 
+- _G_ (shear modulus),  
+- _k_ (shear strength)
 
 Mises_minimal: the same model as above, but implemented with minimal code, with none of the derivatives specified. As a result 
 HyperDrive runs much slower, as it uses automatically derived differentials, but it gives the same result as the "Mises" model.
 
 Mises_multi: A "multisurface" variant of the von Mises model, with a series implementation of surfaces. Each surface employs
 kinematic hardening. For each surface two constants are required:
-   k[i] (shear strength for that surface)
-   H[i] (hardening modulus)
+ - _k_[_i_] (shear strength for that surface)
+ - _H_[_i_] (hardening modulus)
 
 ### Test files:
 
