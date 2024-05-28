@@ -2,6 +2,8 @@
 
 The Models folder contains a number of example models, arranged in sub-folders by categories:
 
+__MCC__: Modified Cam Clay model in Cambridge (p,q) parameters
+
 __Mises__: "von Mises" type models for continua, implemented using Voigt notation (6-dimensional stress and strain vectors). Note 
 that internally HyperDrive implements these models using Mandel notation, converting between the notations on input and output. 
 
