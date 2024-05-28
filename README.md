@@ -7,6 +7,6 @@ HyperDrive may be used for academic and research purposes but not for any commer
 
 Documentation of HyperDrive can be found in "HyperDrive documentation.pdf". Whilst I attempt to keep this up-to-date, sometimes it lags behind the code development.
 
-A number of simple models are also now available on this site. 
+A number of simple models are available in the "Models" folder. See the README files in each folder for a brief explanation. 
 
 For more information on hyperplasticity see hyperplasticity.wordpress.com
