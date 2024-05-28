@@ -1,5 +1,5 @@
 # HyperDrive
-HyperDrive and associated code
+### HyperDrive and associated code.
 
 HyperDrive is a Python 3.0 script that can be used to implement hyperplasticity models. It is under development, and upgraded versions will be released in future.
 
