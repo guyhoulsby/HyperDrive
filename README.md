@@ -9,4 +9,4 @@ Documentation of HyperDrive can be found in "HyperDrive documentation.pdf". Whil
 
 A number of simple models are available in the "Models" folder. See the README files in each folder for a brief explanation. 
 
-For more information on hyperplasticity see hyperplasticity.wordpress.com
+For more information on hyperplasticity see [hyperplasticity.wordpress.com](https://hyperplasticity.wordpress.com)
