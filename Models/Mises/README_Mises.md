@@ -9,9 +9,9 @@ implement these and their derivatives.
 ### Models:
 
 Mises: a basic elastic-perfectly plastic von Mises model. Requires just three constants: 
-   K (bulk modulus), 
-   G (shear modulus),  
-   k (shear strength)
+- K (bulk modulus), 
+- G (shear modulus),  
+- k (shear strength)
 
 Mises_minimal: the same model as above, but implemented with minimal code, with none of the derivatives specified. As a result 
 HyperDrive runs much slower, as it uses automatically derived differentials, but it gives the same result as the "Mises" model.
