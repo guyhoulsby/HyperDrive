@@ -1,3 +1,4 @@
+# "von Mises" models
 This folder contains examples of "von Mises" type continuum models expressed in Voigt notation (stress and strain as 6-dimensional 
 vectors). Note that internally HyperDrive implements these models using Mandel notation, converting between the two notations 
 on input and output.
