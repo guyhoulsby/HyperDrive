@@ -6,7 +6,7 @@ on input and output.
 The potential functions for these model are expressed using invariants of the stresses etc., as HyperDrive provides functions that
 implement these and their derivatives.
 
-The models are:
+### Models:
 
 Mises: a basic elastic-perfectly plastic von Mises model. Requires just three constants: 
    K (bulk modulus), 
@@ -21,7 +21,7 @@ kinematic hardening. For each surface two constants are required:
    k[i] (shear strength for that surface)
    H[i] (hardening modulus)
 
-Test files are supplied:
+### Test files:
 
 run_Mises: test file for the "Mises" or "Mises_minimal" models
 
