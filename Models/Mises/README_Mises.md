@@ -3,7 +3,7 @@ This folder contains examples of "von Mises" type continuum models expressed in 
 vectors). Note that internally HyperDrive implements these models using Mandel notation, converting between the two notations 
 on input and output - see Section 11 of "Hyperdrive documentation.pdf" for a note on Voigt and Mandel notation, or see [Wikipedia](https://en.wikipedia.org/wiki/Voigt_notation).
 
-The potential functions for these model are expressed using invariants of the stresses etc., as HyperDrive provides functions that
+The potential functions for these model are expressed using invariants of the stresses _etc_., as HyperDrive provides functions that
 implement these and their derivatives.
 
 ### Models:
