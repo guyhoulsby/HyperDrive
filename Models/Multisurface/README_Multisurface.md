@@ -3,6 +3,8 @@ The Multisurface folder contains example models implementing simple multi-dimens
 different dimensionality (ndim). Useful values of dimensionality are typically in the range 1-3. Models are implemented 
 in the "series" form (_ser), "parallel" form (_par) and "nested" form (_nest).
 
+"Bounding surface" variants of the same models (see [doi: 10.1016/j.compgeo.2022.105143](https://doi.org/10.1016/j.compgeo.2022.105143)
+
 ### Test files:
 
 __run_rate__: Allows comparison of madels implemented using rate-independent and rate-dependent formulations.
