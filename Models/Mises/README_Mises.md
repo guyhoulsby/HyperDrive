@@ -18,8 +18,8 @@ HyperDrive runs much slower, as it uses automatically derived differentials, but
 
 Mises_multi: A "multisurface" variant of the von Mises model, with a series implementation of surfaces. Each surface employs
 kinematic hardening. For each surface two constants are required:
- - _k_[_i_] (shear strength for that surface)
- - _H_[_i_] (hardening modulus)
+ - _k_<sub>i</sub> (shear strength for that surface)
+ - _H_<sub>i</sub> (hardening modulus)
 
 ### Test files:
 
