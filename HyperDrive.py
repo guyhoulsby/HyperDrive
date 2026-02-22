@@ -1,8 +1,8 @@
 # HyperDrive
-# Version 3.1.0
-# (c) G.T. Houlsby, 2018-2023
+# Version 3.1.1
+# (c) G.T. Houlsby, 2018-2025
 #
-# Routines to run the HyperDrive system for implementing hyperplasticity models 
+# Routines to run the HyperDrive system for implementing hyperplasticity models
 
 # set the following line to auto = False if autograd is not available
 auto = True
@@ -29,6 +29,11 @@ def weight_dydc(dydc):
     for i in range(hj.n_int):
         temp[:,i,:] = hj.rwt[i]*dydc[:,i,:]
     return temp
+def weight_dwdc(dwdc):
+    temp = np.zeros([hj.n_int, hj.n_dim])
+    for i in range(hj.n_int):
+        temp[i,:] = hj.rwt[i]*dwdc[i,:]
+    return temp
 
 class Ein: # Einsein summation shorthand, several products now replaced by @
     chi  = "N,Ni->Ni"   # for weight calculation
@@ -36,7 +41,7 @@ class Ein: # Einsein summation shorthand, several products now replaced by @
     b = "ki,i->k"
     c = "imj,mj->i"
     d = "N,Nmi->mi"
-    #e = "Ni,i->N"
+    e = "Ni,i->N"
     f = "Nj,jk->Nk"
     g = "Nk,knl->Nnl"
     h = "Nmi,mij->Nj"
@@ -51,6 +56,7 @@ class State:
     sig = np.zeros(1)
     alp = np.zeros([1,1])
     chi = np.zeros([1,1])
+    supp = np.zeros(1)
 s    = State() # current state
 save = State() # saved version of state
 si   = State() # increments for numerical differentiation
@@ -72,7 +78,7 @@ class Job: # stores common values for the current job
     n_int = 1
     n_y   = 1
     rwt   = np.ones(1) # reciprocal weights in internal variables * generalised stress
-    prefs = ["analytical", "automatic", "numerical"] # preference for differentials
+    prefs = ["user", "automatic", "numerical"] # preference for differentials
     fform = False
     gform = False
     rate  = False # rate option
@@ -80,7 +86,7 @@ class Job: # stores common values for the current job
     quiet = False
     voigt = False # option to use Voigt notation for input and output
                   # internal calculations use Mandel vectors
-    acc  = 0.5       # acceleration factor
+    acc  = 0.5       # acceleration factor for MCA
     ytol = -0.00001  # tolerance on triggering yield
     auto_t_step = False # option for setting automatic timestep, not fully tested
     at_step     = 0.001
@@ -112,11 +118,9 @@ udef = "undefined"
 def undef(arg1=[],arg2=[],arg3=[],arg4=[]): return udef
 
 # for large strain - currently unused
-#def C(F):
-#    return np.einsum("ki,kj->ij",F,F)
-#def b(F):
-#    return np.einsum("ik,jk->ij",F,F)
-#def R(F):
+#def C(F): return np.einsum("ki,kj->ij",F,F)
+#def b(F): return np.einsum("ik,jk->ij",F,F)
+#def R(F): 
 #    A,lam,Bt = np.linalg.svd(F)
 #    return A @ Bt
 def Hencky(F):
@@ -143,8 +147,8 @@ def LL_G(F): # linear operator for Green strain: E~ = LL:d
     return np.einsum("im,jn,km,ln,m,n->ijkl",B,B,A,A,lam,lam)
 
 # required for shortcuts to Voigt notation tests
-S_txl_d = np.array([[0.0, -1.0,  1.0,  0.0,  0.0, 0.0],
-                    [0.0,  0.0,  1.0,  0.0,  0.0, 0.0],
+S_txl_d = np.array([[0.0, -1.0,  1.0,  0.0,  0.0, 0.0], # drained strain controlled triaxial
+                    [0.0,  0.0,  1.0,  0.0,  0.0, 0.0], # dsig_3 = 0
                     [0.0,  0.0,  0.0,  1.0,  0.0, 0.0],
                     [0.0,  0.0,  0.0,  0.0,  1.0, 0.0],
                     [0.0,  0.0,  0.0,  0.0,  0.0, 1.0],
@@ -154,20 +158,44 @@ E_txl_d = np.array([[0.0,  0.0,  0.0,  0.0,  0.0, 0.0],
                     [0.0,  0.0,  0.0,  0.0,  0.0, 0.0],
                     [0.0,  0.0,  0.0,  0.0,  0.0, 0.0],
                     [0.0,  0.0,  0.0,  0.0,  0.0, 0.0],
-                    [1.0,  0.0,  0.0,  0.0,  0.0, 0.0]])
-S_txl_u = np.array([[0.0, -1.0,  1.0,  0.0,  0.0, 0.0],
+                    [1.0,  0.0,  0.0,  0.0,  0.0, 0.0]]) # deps_1
+S_txl_ds = np.array([[0.0, -1.0,  1.0,  0.0,  0.0, 0.0], # drained stress controlled triaxial
+                     [0.0,  0.0,  1.0,  0.0,  0.0, 0.0], # dsig_3 = 0
+                     [0.0,  0.0,  0.0,  1.0,  0.0, 0.0],
+                     [0.0,  0.0,  0.0,  0.0,  1.0, 0.0],
+                     [0.0,  0.0,  0.0,  0.0,  0.0, 1.0],
+                     [1.0,  0.0,  0.0,  0.0,  0.0, 0.0]]) # dsig_1
+E_txl_ds = np.array([[0.0,  0.0,  0.0,  0.0,  0.0, 0.0],
+                     [0.0,  0.0,  0.0,  0.0,  0.0, 0.0],
+                     [0.0,  0.0,  0.0,  0.0,  0.0, 0.0],
+                     [0.0,  0.0,  0.0,  0.0,  0.0, 0.0],
+                     [0.0,  0.0,  0.0,  0.0,  0.0, 0.0],
+                     [0.0,  0.0,  0.0,  0.0,  0.0, 0.0]])
+S_txl_u = np.array([[0.0, -1.0,  1.0,  0.0,  0.0, 0.0], # undrained strain controlled triaxial
                     [0.0,  0.0,  0.0,  0.0,  0.0, 0.0],
                     [0.0,  0.0,  0.0,  1.0,  0.0, 0.0],
                     [0.0,  0.0,  0.0,  0.0,  1.0, 0.0],
                     [0.0,  0.0,  0.0,  0.0,  0.0, 1.0],
                     [0.0,  0.0,  0.0,  0.0,  0.0, 0.0]])
 E_txl_u = np.array([[0.0,  0.0,  0.0,  0.0,  0.0, 0.0],
-                    [1.0,  1.0,  1.0,  0.0,  0.0, 0.0],
+                    [1.0,  1.0,  1.0,  0.0,  0.0, 0.0], # deps_v = 0
                     [0.0,  0.0,  0.0,  0.0,  0.0, 0.0],
                     [0.0,  0.0,  0.0,  0.0,  0.0, 0.0],
                     [0.0,  0.0,  0.0,  0.0,  0.0, 0.0],
-                    [1.0,  0.0,  0.0,  0.0,  0.0, 0.0]])
-S_dss   = np.array([[0.0,  0.0,  0.0,  0.0,  0.0, 0.0],
+                    [1.0,  0.0,  0.0,  0.0,  0.0, 0.0]]) # deps_1
+S_txl_us = np.array([[0.0, -1.0,  1.0,  0.0,  0.0, 0.0], # undrained stress controlled triaxial
+                     [0.0,  0.0,  0.0,  0.0,  0.0, 0.0],
+                     [0.0,  0.0,  0.0,  1.0,  0.0, 0.0],
+                     [0.0,  0.0,  0.0,  0.0,  1.0, 0.0],
+                     [0.0,  0.0,  0.0,  0.0,  0.0, 1.0],
+                     [1.0,  0.0, -1.0,  0.0,  0.0, 0.0]]) # dsig_1 - dsig_3 = dq
+E_txl_us = np.array([[0.0, 0.0,  0.0,  0.0,  0.0, 0.0],
+                     [1.0,  1.0,  1.0,  0.0,  0.0, 0.0], # deps_v = 0
+                     [0.0,  0.0,  0.0,  0.0,  0.0, 0.0],
+                     [0.0,  0.0,  0.0,  0.0,  0.0, 0.0],
+                     [0.0,  0.0,  0.0,  0.0,  0.0, 0.0],
+                     [0.0,  0.0,  0.0,  0.0,  0.0, 0.0]])
+S_dss   = np.array([[0.0,  0.0,  0.0,  0.0,  0.0, 0.0], # strain controlled direct simple shear
                     [0.0,  0.0,  0.0,  0.0,  0.0, 0.0],
                     [0.0,  0.0,  0.0,  0.0,  0.0, 0.0],
                     [0.0,  0.0,  0.0,  0.0,  1.0, 0.0],
@@ -183,10 +211,10 @@ E_dss   = np.array([[1.0,  0.0,  0.0,  0.0,  0.0, 0.0],
 def qprint(*args): # suppressible print
     if not hj.quiet: print(*args)
 
-def sig_from_voigt(sig_in): return Utils.vs_to_m(sig_in)  if hj.voigt else sig_in
-def sig_to_voigt(sig_out):  return Utils.m_to_vs(sig_out) if (hj.voigt or hj.large) else sig_out
-def eps_from_voigt(eps_in): return Utils.ve_to_m(eps_in)  if hj.voigt else eps_in
-def eps_to_voigt(eps_out):  return Utils.m_to_ve(eps_out) if hj.voigt else eps_out
+def sig_from_voigt(sig_in): return Utils.vs_to_m(sig_in)  if hj.voigt else np.array(sig_in)
+def sig_to_voigt(sig_out):  return Utils.m_to_vs(sig_out) if (hj.voigt or hj.large) else np.array(sig_out)
+def eps_from_voigt(eps_in): return Utils.ve_to_m(eps_in)  if hj.voigt else np.array(eps_in)
+def eps_to_voigt(eps_out):  return Utils.m_to_ve(eps_out) if hj.voigt else np.array(eps_out)
 
 def substeps(nsub, tinc):
     return (int(tinc / hj.at_step) + 1) if hj.auto_t_step else nsub
@@ -202,13 +230,16 @@ def pause(message = ''):
 #printing routine for matrices
 def pprint(x, label, form="15.8"):
     if hj.quiet: return
-    def ftext(x, formin="15.8"):
-        form = "{:"+formin+"g}"
-        return form.format(x)
+    def ftext(x, form_in="15.8"):
+        form_full = "{:"+form_in+"f}"
+        #print("form_full = ",form_full)
+        #print("x = ",x)
+        return form_full.format(x)
     if type(x) == str:
         print(label,x)
         return
     if hasattr(x,"shape"):
+        #print("x.shape = ",x.shape)
         if len(x.shape) == 0:
             print(label+ftext(x,form))
         elif len(x.shape) == 1:
@@ -296,6 +327,36 @@ class Utils:
     root2 = np.sqrt(2.0)
     rooth = np.sqrt(0.5)
 
+    def f(tag, var, i, j):
+        form = "{:"+str(i)+"."+str(j)+"f}"
+        return tag+form.format(var)
+    def is_iterable(var):
+        try:
+            _ = (e for e in var)
+            return True
+        except TypeError:
+            return False
+    def chnan(x, text=""): # used to trap error
+        if np.isnan(x).any():
+            print("NaN",text)
+            a = 1.0
+            print(a[1])
+    def log(x, text=""): # used to trap error
+        if x > 0.0:
+            return np.log(x)
+        else:
+            print("Error in log(x):", text)
+            print("x =", x)
+            a = 1.0
+            print(a[1]) # force traceback by generating error
+    def power(x, y, text=""): # used to trap error
+        if x >= 0.0:
+            return x**y
+        else:
+            print("Error in power x**y:", text)
+            print("x =", x, "y =", y)
+            a = 1.0
+            print(a[1]) # force traceback by generating error
     def mac(x): # Macaulay bracket
         return 0.5*(x + np.abs(x)) # iterable version
     def macm(x): # Macaulay bracket, with rounding near the origin
@@ -303,23 +364,26 @@ class Utils:
         if x <= -delta: return 0.0
         if x >= delta: return x
         else: return ((x + delta)**2) / (4.0*delta)
+    def H(x): # modified Heaviside step function
+        return 0.5 * (Utils.S(x) + 1.0)
     def S(x): # modified Signum function
         return x / (Utils.tiny + np.abs(x)) # iterable version
     def non_zero(x): # return a finite small value if argument close to zero
         return x if np.abs(x) >= Utils.tiny else Utils.tiny
-    def ilog(x): # Integral of log, with ilog(1) = 0
-        return 1.0 + x*np.log(x) - x
     def Ineg(x): # approximation to Indicator function for set of negative reals
         return 0.0 if x <= 0.0 else Utils.big * 0.5*(x**2)
     def Nneg(x): # approximation to Normal Cone for set of negative reals
         return 0.0 if x <= 0.0 else Utils.big * x
+    def ilog(x): # Integral of log, with ilog(1) = 0
+        return 1.0 + x*np.log(x) - x
+
     def w_rate_lin(y, mu): # convert first canonical y to linear w function
         return (Utils.mac(y)**2) / (2.0*mu) 
-    def w_rate_lind(y, mu): # differential of w_rate_lin
+    def w_rate_lind(y, mu): # differential of w_rate_lin w.r.t. y
         return Utils.mac(y) / mu
     def w_rate_rpt(y, mu, r): # convert first canonical y to Rate Process Theory w function
         return mu*(r**2) * (np.cosh(Utils.mac(y) / (mu*r)) - 1.0)
-    def w_rate_rptd(y, mu,r): # differential of w_rate_rpt
+    def w_rate_rptd(y, mu,r): # differential of w_rate_rpt w.r.t. y
         return r * np.sinh(Utils.mac(y) / (mu*r))
 
     # Tensor utilities for 3x3 tensors - used for development and checking
@@ -353,9 +417,9 @@ class Utils:
     PPsym = IIsym - (IIbb / 3.0) # 4th order projection tensor (symmetric)
     # traces
     # _e variants are einsum versions for checking
-    def tr1_e(t): return np.trace(t)
-    def tr2_e(t): return np.trace(t @ t)
-    def tr3_e(t): return np.trace(t @ t @ t) 
+    def tr1_o(t): return np.trace(t)
+    def tr2_o(t): return np.trace(t @ t)
+    def tr3_o(t): return np.trace(t @ t @ t) 
     # mixed invariants of two tensors
     def trm_ab(a,b):   return np.trace(a @ b)
     def trm_a2b(a,b):  return np.trace(a @ a @ b)
@@ -526,6 +590,8 @@ class Utils:
                a[3]*a[4]*(Utils.root2*b[2]*b[5] + b[3]*b[4]) + \
                a[4]*a[5]*(Utils.root2*b[0]*b[3] + b[4]*b[5]) + \
                a[5]*a[3]*(Utils.root2*b[1]*b[4] + b[5]*b[3])
+    def M1_ab_m(a,b):
+        return 2.0*Utils.i1_m(a)*Utils.j2_m(b) - 1.5*Utils.trm_ab2_m(a,b)
 
     # derivatives of traces and invariants
     def dtr1_m(t):  return Utils.delta_m
@@ -657,16 +723,20 @@ class Utils:
                          b[2]*(Utils.root2*a[3]*a[4]) + 2.0*a[5]*(b[0]*a[0] + b[1]*a[1]) + \
                          2.0*b[5]*(a[0]*a[1] + 0.5*(a[5]**2)) + \
                          b[3]*(Utils.root2*a[1]*a[4] + a[5]*a[3]) + b[4]*(Utils.root2*a[0]*a[3] + a[4]*a[5])])                                  
+    def dM1_ab_a_m(a,b):
+        return 2.0*Utils.di1_m(a)*Utils.j2_m(b) - 1.5*Utils.dtrm_ab2_a_m(a,b)
+    def dM1_ab_b_m(a,b):
+        return 2.0*Utils.i1_m(a)*Utils.dj2_m(b) - 1.5*Utils.dtrm_ab2_b_m(a,b)
     
     # second differentials - define others when needed
-    def d2i1sq_m(t=0): # d2(i1^2) / dtdt
+    def d2i1sq_m(t=0.0): # d2(i1^2) / dtdt
         return 2.0*Utils.II_m
-    def d2j2_m(t=0): # d2j2 / dtdt
+    def d2j2_m(t=0.0): # d2j2 / dtdt
         return Utils.PP_m
     
     # tensorial signum of deviator and its differential
     def S_dev_m(t):
-        return Utils.dev_m(t) / (Utils.tiny + np.sqrt(2.0*Utils.j2_m(t)))
+        return Utils.dev_m(t) / np.sqrt(2.0*Utils.j2_m(t) + Utils.tiny)
     def dS_dev_m(t):
         if Utils.j2_m(t) < Utils.tiny: 
             temp = np.zeros[6,6]
@@ -674,7 +744,16 @@ class Utils:
             temp  =  Utils.PP_m / np.sqrt(2.0*Utils.j2_m(t))
             temp += -Utils.pij_m(Utils.dev_m(t),Utils.dev_m(t)) / ((2.0*Utils.j2_m(t))**1.5)
         return temp
-
+    
+    # extract p,q from voigt
+    def v_to_pq(eps,sig):
+        supp = np.zeros(4)
+        supp[0] = eps[0] + 2.0*eps[2]           # eps_v
+        supp[1] = (2.0/3.0) * (eps[0] - eps[2]) # eps_s
+        supp[2] = (sig[0] + 2.0*sig[2]) / 3.0   # p
+        supp[3] = sig[0] - sig[2]               # q
+        return supp
+    
 class Commands: # each of these functions corresponds to a command in Hyperdrive
     def check(): # run checks
         check()
@@ -891,8 +970,9 @@ class Commands: # each of these functions corresponds to a command in Hyperdrive
         hj.test_high = []
         s.t = 0.0
         if hasattr(hm, "deriv"): hm.deriv()
-        calc_init()
-        if hasattr(hm, "setalp"): hm.setalp(s.alp)
+        s.eps, s.sig, s.alp, s.chi = calc_init()
+        if hasattr(hm, "setalp"): s.alp = hm.setalp(s.alp)
+        if hasattr(hm, "initialise"): s.eps,s.sig,s.alp,s.chi = hm.initialise(s.eps,s.sig,s.alp,s.chi)
         record(s.eps, s.sig)
         Time.start = process_time()
         Time.last  = process_time()
@@ -906,8 +986,9 @@ class Commands: # each of these functions corresponds to a command in Hyperdrive
         hj.high.append([])
         s.t = 0.0
         if hasattr(hm, "deriv"): hm.deriv()
-        calc_init()
-        if hasattr(hm, "setalp"): hm.setalp(s.alp)
+        s.eps, s.sig, s.alp, s.chi = calc_init()
+        if hasattr(hm, "setalp"): s.alp = hm.setalp(s.alp)
+        if hasattr(hm, "initialise"): s.eps,s.sig,s.alp,s.chi = hm.initialise(s.eps,s.sig,s.alp,s.chi)
         record(s.eps, s.sig)
         time_now = process_time()
         print("Total time:",time_now - Time.start,", increment", time_now - Time.last)
@@ -924,6 +1005,7 @@ class Commands: # each of these functions corresponds to a command in Hyperdrive
         time_now = process_time()
         print("Total time:",time_now - Time.start,", increment", time_now - Time.last)
         print("End of test")
+        sysexit()
 
 # commands for initialisation
     def init_stress(sigin):
@@ -944,6 +1026,18 @@ class Commands: # each of these functions corresponds to a command in Hyperdrive
         print("Initialising strain")
         print("Initial strain:", s.eps)
         print("Initial stress:", s.sig)
+        delrec()
+        record(s.eps, s.sig)
+    def init_alp(alpin):
+        alpi = np.array(alpin)
+        s.alp = alpi
+        s.sig = sig_f(s.eps,s.alp)
+        #s.chi = chi_f(s.eps,s.alp)
+        print("Initialising internal variable alp")
+        print("Initial strain:", s.eps)
+        print("Initial stress:", s.sig)
+        print("Initial alp:", s.alp)
+        print("Initial chi:", s.chi)
         delrec()
         record(s.eps, s.sig)
     def set_strain_reference():
@@ -971,12 +1065,76 @@ class Commands: # each of these functions corresponds to a command in Hyperdrive
         qprint(text1)
         qprint(text2, Tdt[5])
         run_general_inc(Smat, Emat, Tdt, dt, nprint, nsub)
+    def pq_txl_d(dt, deps1, nprint, nsub):
+        Smat = np.array([[3.0, -1.0], [0.0, 0.0]])
+        Emat = np.array([[0.0, 0.0], [0.0, 1.0]])
+        Tdt = np.zeros(2)
+        Tdt[1] = deps1
+        qprint("Drained strain controlled triaxial test:")
+        qprint("deps_s =", Tdt[1])
+        run_general_inc(Smat, Emat, Tdt, dt, nprint, nsub)
+    def pq_txl_ds(dt, dq, nprint, nsub):
+        Smat = np.array([[3.0, -1.0], [0.0, 1.0]])
+        Emat = np.array([[0.0, 0.0], [0.0, 0.0]])
+        Tdt = np.zeros(2)
+        Tdt[1] = dq
+        qprint("Drained stress controlled triaxial test:")
+        qprint("dq =", Tdt[1])
+        run_general_inc(Smat, Emat, Tdt, dt, nprint, nsub)
+    def pq_txl_u(dt, deps1, nprint, nsub):
+        Smat = np.array([[0.0, 0.0], [0.0, 0.0]])
+        Emat = np.array([[1.0, 0.0], [0.0, 1.0]])
+        Tdt = np.zeros(2)
+        Tdt[1] = deps1
+        qprint("Undrained strain controlled triaxial test:")
+        qprint("deps_s =", Tdt[1])
+        run_general_inc(Smat, Emat, Tdt, dt, nprint, nsub)
+    def pq_txl_us(dt, dq, nprint, nsub):
+        Smat = np.array([[0.0, 0.0], [0.0, 1.0]])
+        Emat = np.array([[1.0, 0.0], [0.0, 0.0]])
+        Tdt = np.zeros(2)
+        Tdt[1] = dq
+        qprint("Undrained stress controlled triaxial test:")
+        qprint("dq =", Tdt[1])
+        run_general_inc(Smat, Emat, Tdt, dt, nprint, nsub)
     def v_txl_d(dt, deps1, nprint, nsub):
-        Commands.v_run(dt, deps1,  nprint, nsub, S_txl_d, E_txl_d, "Drained triaxial test:",   "deps11 =")
+        Commands.v_run(dt, deps1,  nprint, nsub, S_txl_d, E_txl_d, "Drained strain controlled triaxial test:",   "deps11 =")
+    def v_txl_ds(dt, dsig1, nprint, nsub):
+        Commands.v_run(dt, dsig1,  nprint, nsub, S_txl_ds, E_txl_ds, "Drained stress controlled triaxial test:",   "dsig11 =")
     def v_txl_u(dt, deps1, nprint, nsub):
-        Commands.v_run(dt, deps1,  nprint, nsub, S_txl_u, E_txl_u, "Undrained triaxial test:", "deps11 =")
+        Commands.v_run(dt, deps1,  nprint, nsub, S_txl_u, E_txl_u, "Undrained strain controlled triaxial test:", "deps11 =")
+    def v_txl_us(dt, dq, nprint, nsub):
+        Commands.v_run(dt, dq,  nprint, nsub, S_txl_us, E_txl_us, "Undrained stress controlled triaxial test:", "dq =")
     def v_dss(dt, dgamma, nprint, nsub):
         Commands.v_run(dt, dgamma, nprint, nsub, S_dss,   E_dss,   "Direct shear test:",       "dgam23 =")
+    
+    def stress_target_strain_control(ddt, ddeps, sig_targ, sig_veci, mprint, nsub):
+        qprint("Stress target with strain control", mprint, "max steps,", nsub, "substeps")
+        qprint("Strain step  ", ddeps)
+        qprint("Stress target", sig_targ)
+        qprint("... direction", sig_veci)
+        qprint("start sig =", s.sig)
+        hj.start_inc = True
+        sig_start = deepcopy(s.sig)
+        sig_vec   = sig_from_voigt(sig_veci)                               # convert if necessary
+        eps_val   = eps_from_voigt(ddeps)                                  # convert if necessary
+        start_val = np.vdot(sig_vec, sig_start)
+        dist_targ = sig_targ - start_val
+        deps      = eps_val / float(nsub)
+        dt        = ddt     / float(nsub)
+        for iprint in range(mprint):
+            for isub in range(nsub):
+                apply_strain_inc(deps, dt)
+                dist_achieved = np.vdot(sig_vec, s.sig) - start_val
+                if dist_achieved/dist_targ >= 1.0:
+                    record(s.eps, s.sig)
+                    qprint("Increment complete in",iprint,"increments\n")
+                    return
+            record(s.eps, s.sig)
+        print("Failed to reach target")
+        print("sig =", s.sig)
+        error()            
+
     def general_inc(Smati, Emati, Tdti, dt, nprint, nsub):
         Smat = np.array(Smati)
         Emat = np.array(Emati)
@@ -1027,7 +1185,7 @@ class Commands: # each of these functions corresponds to a command in Hyperdrive
                     for isub in range(nsub): apply_general_inc(Smat, Emat, dTdt, dtper)
                     record(s.eps, s.sig)
         qprint("Cycles complete")
-    def strain_it(t_inc, eps_vali, nprint, nsub, eback, text1, text2):
+    def strain_it(t_inc, eps_vali, nprint, nsub, eback, text1, text2): # utility used bt strain_inc and strain_targ
         eps_val = eps_from_voigt(eps_vali) # convert if necessary
         deps = (eps_val - eback) / float(nprint*nsub)
         dt = t_inc / float(nprint*nsub)
@@ -1271,9 +1429,9 @@ class Commands: # each of these functions corresponds to a command in Hyperdrive
         results_plot(pname)
     def plotCS(pname = "hplot_" + hj.model):
         results_plotCS(pname)
-    def graph(xax, yax, pname = "hplot_" + hj.model, xsize = 6, ysize = 6):
+    def graph(xax, yax, pname = "hplot_" + hj.model, xsize = 6, ysize = 6, fix=False, xmin=0,xmax=0,ymin=0,ymax=0):
         axes = [xax, yax]
-        results_graph(pname, axes, xsize, ysize)
+        results_graph(pname, axes, xsize, ysize, fix, xmin, xmax, ymin, ymax)
     def specialplot(pname = "hplot_" + hj.model):
         if hasattr(hm,"specialplot"): 
             hm.specialplot(pname, hj.title, hj.rec, s.eps, s.sig, s.alp, s.chi)
@@ -1311,7 +1469,7 @@ class Commands: # each of these functions corresponds to a command in Hyperdrive
 def set_up_analytical():
     global udfde, udfda, ud2fdede, ud2fdeda, ud2fdade, ud2fdada
     global udgds, udgda, ud2gdsds, ud2gdsda, ud2gdads, ud2gdada
-    global udyde, udyds, udyda, udydc, udwdc
+    global udyde, udyds, udyda, udydc, udwdc, udwprimedc
     def set_h(name):
         qprint("  "+name+"...")
         if hasattr(hm,name): 
@@ -1339,11 +1497,12 @@ def set_up_analytical():
     udyda = set_h("dyda")
     udydc = set_h("dydc")
     udwdc = set_h("dwdc")
+    udwprimedc = set_h("dwprimedc")
     
 def set_up_auto():
     global adfde, adfda, ad2fdede, ad2fdeda, ad2fdade, ad2fdada
     global adgds, adgda, ad2gdsds, ad2gdsda, ad2gdads, ad2gdada
-    global adyde, adyds, adyda, adydc, adwdc    
+    global adyde, adyds, adyda, adydc, adwdc, adwprimedc
     adfde = undef
     adfda = undef
     ad2fdede = undef
@@ -1361,6 +1520,7 @@ def set_up_auto():
     adyda = undef
     adydc = undef
     adwdc = undef
+    adwprimedc = undef
     if not auto:
         print("\nAutomatic differentials not available")
         return
@@ -1427,11 +1587,20 @@ def set_up_auto():
             adwdc = ag.jacobian(hm.w,3)
     else:
         qprint("w not specified in", hm.file)    
+    if hasattr(hm,"wprime"):
+        if hasattr(hm,"wprime_exclude"):
+            qprint("wprime excluded from auto-differentials in", hm.file)
+        else:
+            qprint("Setting up auto-differential of wprime")
+            qprint("  dwprimedc...")
+            adwprimedc = ag.jacobian(hm.wprime,3)
+    else:
+        qprint("wprime not specified in", hm.file)    
 
 def set_up_num():
     global ndfde, ndfda, nd2fdede, nd2fdeda, nd2fdade, nd2fdada
     global ndgds, ndgda, nd2gdsds, nd2gdsda, nd2gdads, nd2gdada
-    global ndyde, ndyds, ndyda, ndydc, ndwdc
+    global ndyde, ndyds, ndyda, ndydc, ndwdc, ndwprimedc
     ndfde = undef
     ndfda = undef
     nd2fdede = undef
@@ -1449,6 +1618,7 @@ def set_up_num():
     ndyda = undef
     ndydc = undef
     ndwdc = undef
+    ndwprimedc = undef
     print("\nSetting up numerical differentials")
     if hasattr(hm,"f"):
         qprint("Setting up numerical differentials of f")
@@ -1498,17 +1668,21 @@ def set_up_num():
         qprint("Setting up numerical differential of w")
         qprint("  dwdc...")
         def ndwdc(eps,sig,alp,chi): return numdiff_6(hm.w, eps,sig,alp,chi, si.chi)
+    if hasattr(hm,"wprime"):
+        qprint("Setting up numerical differential of w")
+        qprint("  dwprimedc...")
+        def ndwprimedc(eps,sig,alp,chi): return numdiff_6(hm.wprime, eps,sig,alp,chi, si.chi)
     else:
-        qprint("w not specified in", hm.file)
+        qprint("wprime not specified in", hm.file)
 
 def choose_diffs():
     global dfde, dfda, d2fdede, d2fdeda, d2fdade, d2fdada
     global dgds, dgda, d2gdsds, d2gdsda, d2gdads, d2gdada
-    global dyde, dyds, dyda, dydc, dwdc    
+    global dyde, dyds, dyda, dydc, dwdc, dwprimedc   
     def choose(name, ud, nd, ad):
         d = udef
         for i in range(3):
-            if hj.prefs[i] == "analytical" and ud != udef: d = ud
+            if hj.prefs[i] == "user"       and ud != udef: d = ud
             if hj.prefs[i] == "automatic"  and ad != udef: d = ad 
             if hj.prefs[i] == "numerical"  and nd != udef: d = nd
             if d != undef:
@@ -1535,6 +1709,7 @@ def choose_diffs():
     dyda    = choose("dyda",    udyda,    ndyda,    adyda)
     dydc    = choose("dydc",    udydc,    ndydc,    adydc)
     dwdc    = choose("dwdc",    udwdc,    ndwdc,    adwdc)
+    dwprimedc    = choose("dwprimedc",    udwprimedc,    ndwprimedc,    adwprimedc)
     print("")
 
 def sig_f(e, a): 
@@ -1562,7 +1737,7 @@ def testch(text1, val1, text2, val2, failtext):
             print("\x1b[0;31mArrays different dimensions:",val1.shape,"and",val2.shape,"\x1b[0m")
             Check.nfail += 1
             Check.fails.append(failtext)
-            pause()
+            pause("... in testch (1)")
             return
     maxv = np.maximum(np.max(val1),np.max(val2))
     minv = np.minimum(np.min(val1),np.min(val2))
@@ -1577,66 +1752,71 @@ def testch(text1, val1, text2, val2, failtext):
         print("\x1b[1;31m***FAILED***\n\x1b[0m")
         Check.nfail += 1
         Check.fails.append(failtext)
-        pause()
+        pause("... in testch (2)")
 
-def testch2(ch, v1, v2, failtext):
-    try:
-        _ = (e for e in v1)
-        v1_iterable = True
-    except TypeError:
-        v1_iterable = False
-    try:
-        _ = (e for e in v2)
-        v2_iterable = True
-    except TypeError:
-        v2_iterable = False
+def testch2(ch, v1, v2, failtext, tol):
+    print("testch2: tol:",tol)
+    v1_iterable = Utils.is_iterable(v1)
+    v2_iterable = Utils.is_iterable(v2)
     if not v1_iterable:
         if v1 == "undefined":
             print(ch,"first variable undefined, comparison not possible")
             Check.nmiss += 1
-            return
+            return True
     if not v2_iterable:
         if v2 == "undefined":
             print(ch,"second variable undefined, comparison not possible")
             Check.nmiss += 1
-            return
+            return True
     if v1_iterable != v2_iterable:
         print(ch,"variables of different types, comparison not possible")
         Check.nfail += 1
         Check.fails.append(failtext)
-        pause()
-        return
+        pause("... in testch2 (1)")
+        return False
     if v1_iterable and v2_iterable:
         if hasattr(v1,"shape") and hasattr(v2,"shape"):
             if v1.shape != v2.shape:
                 print("\x1b[0;31mArrays different dimensions:",v1.shape,"and",v2.shape,"\x1b[0m")
                 Check.nfail += 1
                 Check.fails.append(failtext)
-                pause()
-                return
-    maxv = np.maximum(np.max(v1),np.max(v2))
-    minv = np.minimum(np.min(v1),np.min(v2))
-    mv = np.maximum(maxv,-minv)
-    testmat = np.isclose(v1, v2, rtol=0.0001, atol=0.001*mv)
+                pause("in testch2 (2)")
+                return False
+   # maxv = np.maximum(np.max(v1),np.max(v2))
+   # minv = np.minimum(np.min(v1),np.min(v2))
+   # mv = np.maximum(maxv,-minv)
+    #testmat = np.isclose(v1, v2, rtol=0.0001, atol=0.001*mv)
+    testmat = np.isclose(v1, v2, rtol=0.0, atol=tol)
+    #print("testch2:",v1-v2)
     if all(testmat.reshape(-1)): 
         print(ch,"\x1b[1;32m***PASSED***\x1b[0m")
         Check.npass += 1
         if np.max(v1) == 0.0 and np.min(v1) == 0.0:
             Check.nzero +=1
             Check.zeros.append(failtext)
+            return True
+        return True
     else:
         print(ch,"\x1b[1;31m***FAILED***\x1b[0m")
         print("test\x1b[1;31m",testmat,"\x1b[0m")
-        pprint(v1,"va11","14.6")
-        pprint(v2,"val2","14.6")
+        #pprint(v1,"va11","14.6")
+        #pprint(v2,"val2","14.6")
         Check.nfail += 1
         Check.fails.append(failtext)
-        pause()
+        pause("in testch2 (3)")
+        return False
     
-def testch1(text, hval, aval, nval):
-    pprint(hval,"Analytical "+text, "14.6")
-    pprint(aval,"Automatic  "+text, "14.6")
-    pprint(nval,"Numerical  "+text, "14.6")
+def testch1(text, hval, aval, nval, typ, denom):
+    print("testch1: Checking "+text)
+    print("       : typ:  ",typ)
+    print("       : denom:",denom)
+    typmax = np.max(typ)
+    typmin = np.min(typ)
+    atol = 0.000001 * np.maximum(typmax,-typmin) / denom
+    ecode = 0
+    pprint(hval,"Analytical "+text, "18.6")
+    pprint(aval,"Automatic  "+text, "18.6")
+    pprint(nval,"Numerical  "+text, "18.6")
     def ex(fun):
         if hasattr(fun,"shape"):
             exists = True
@@ -1644,12 +1824,25 @@ def testch1(text, hval, aval, nval):
             exists = (fun != "undefined")
         return exists
     if ex(hval) and ex(aval):
-        testch2("analytical v. automatic: ", hval, aval, "analytical v. automatic:  "+text)
+        if testch2("analytical v. automatic: ", hval, aval, "analytical v. automatic:  "+text, atol):
+            pass
+        else:
+            ecode += 1
     if ex(aval) and ex(nval):
-        testch2("automatic  v. numerical: ", aval, nval, "automatic  v. numerical:  "+text)
+        if testch2("automatic  v. numerical: ", aval, nval, "automatic  v. numerical:  "+text, atol):
+            pass
+        else:
+            ecode += 2
     if ex(nval) and ex(hval):
-        testch2("numerical  v. analytical:", nval, hval, "numerical  v. analytical: "+text)
-
+        if testch2("numerical  v. analytical:", nval, hval, "numerical  v. analytical: "+text, atol):
+            pass
+        else:
+            ecode += 4
+    if (ecode == 3): print("Problem appears to be with automatic"+text)
+    if (ecode == 5): print("Problem appears to be with analytic "+text)
+    if (ecode == 6): print("Problem appears to be with numerical"+text)
+    if (ecode != 0): pause("... in testch1")
+    
 def check(arg="unknown"):
     global hm
     
@@ -1672,7 +1865,8 @@ def check(arg="unknown"):
     set_up_num()
     choose_diffs()
     
-    sig, eps, chi, alp = calc_init()
+    eps, sig, alp, chi = calc_init()
+#    if hasattr(hm, "initialise"): eps,sig,alp,chi = hm.initialise(s.eps,s.sig,s.alp,s.chi)
     
     if hasattr(hm, "check_eps"): 
         eps = hm.check_eps
@@ -1715,9 +1909,9 @@ def check(arg="unknown"):
     
         print("Checking Legendre transform...")
         W = np.einsum("i,i->", sigt, eps)
-        testch("from eps: f + (-g) =", hm.f(eps,alp) - hm.g(sigt,alp), "sig.eps =           ", W,"f + (-g): 1")
+        testch("from eps: f + (-g) =", hm.f(eps,alp)  - hm.g(sigt,alp), "sig.eps =           ", W,"f + (-g): 1")
         W = np.einsum("i,i->", sig, epst)
-        testch("from sig: f + (-g) =", hm.f(epst,alp) - hm.g(sig,alp), "sig.eps =           ", W,"f + (-g): 2")
+        testch("from sig: f + (-g) =", hm.f(epst,alp) - hm.g(sig,alp),  "sig.eps =           ", W,"f + (-g): 2")
     
         print("Checking elastic stiffness and compliance at specified strain...")
         unit = np.eye(hj.n_dim)
@@ -1737,35 +1931,37 @@ def check(arg="unknown"):
     
     if hasattr(hm, "f"):
         print("Checking derivatives of f...")
-        testch1("dfde",    udfde(eps,alp),    adfde(eps,alp),    ndfde(eps,alp))
-        testch1("dfda",    udfda(eps,alp),    adfda(eps,alp),    ndfda(eps,alp))
-        testch1("d2fdede", ud2fdede(eps,alp), ad2fdede(eps,alp), nd2fdede(eps,alp))
-        testch1("d2fdeda", ud2fdeda(eps,alp), ad2fdeda(eps,alp), nd2fdeda(eps,alp))
-        testch1("d2fdade", ud2fdade(eps,alp), ad2fdade(eps,alp), nd2fdade(eps,alp))
-        testch1("d2fdada", ud2fdada(eps,alp), ad2fdada(eps,alp), nd2fdada(eps,alp))
+        testch1("dfde",    udfde(eps,alp),    adfde(eps,alp),    ndfde(eps,alp),    hm.f(eps,alp), si.eps)
+        testch1("dfda",    udfda(eps,alp),    adfda(eps,alp),    ndfda(eps,alp),    hm.f(eps,alp), si.alp)
+        testch1("d2fdede", ud2fdede(eps,alp), ad2fdede(eps,alp), nd2fdede(eps,alp), hm.f(eps,alp), si.eps**2)
+        testch1("d2fdeda", ud2fdeda(eps,alp), ad2fdeda(eps,alp), nd2fdeda(eps,alp), hm.f(eps,alp), si.eps*si.alp)
+        testch1("d2fdade", ud2fdade(eps,alp), ad2fdade(eps,alp), nd2fdade(eps,alp), hm.f(eps,alp), si.eps*si.alp)
+        testch1("d2fdada", ud2fdada(eps,alp), ad2fdada(eps,alp), nd2fdada(eps,alp), hm.f(eps,alp), si.alp**2)
         print("Checking order of differentiation")
         reshape = np.einsum("ijk->kij",d2fdade(eps,alp))
         testch("d2fdeda",d2fdeda(eps,alp),"d2fdade(reshaped)", reshape,"order")
     if hasattr(hm, "g"):
         print("Checking derivatives of g...")
-        testch1("dgds",    udgds(sig,alp),    adgds(sig,alp),    ndgds(sig,alp))
-        testch1("dgda",    udgda(sig,alp),    adgda(sig,alp),    ndgda(sig,alp))
-        testch1("d2gdsds", ud2gdsds(sig,alp), ad2gdsds(sig,alp), nd2gdsds(sig,alp))
-        testch1("d2gdsda", ud2gdsda(sig,alp), ad2gdsda(sig,alp), nd2gdsda(sig,alp))
-        testch1("d2gdads", ud2gdads(sig,alp), ad2gdads(sig,alp), nd2gdads(sig,alp))
-        testch1("d2gdada", ud2gdada(sig,alp), ad2gdada(sig,alp), nd2gdada(sig,alp))       
+        testch1("dgds",    udgds(sig,alp),    adgds(sig,alp),    ndgds(sig,alp),    hm.g(sig,alp), si.sig)
+        testch1("dgda",    udgda(sig,alp),    adgda(sig,alp),    ndgda(sig,alp),    hm.g(sig,alp), si.alp)
+        testch1("d2gdsds", ud2gdsds(sig,alp), ad2gdsds(sig,alp), nd2gdsds(sig,alp), hm.g(sig,alp), si.sig**2)
+        testch1("d2gdsda", ud2gdsda(sig,alp), ad2gdsda(sig,alp), nd2gdsda(sig,alp), hm.g(sig,alp), si.sig*si.alp)
+        testch1("d2gdads", ud2gdads(sig,alp), ad2gdads(sig,alp), nd2gdads(sig,alp), hm.g(sig,alp), si.sig*si.alp)
+        testch1("d2gdada", ud2gdada(sig,alp), ad2gdada(sig,alp), nd2gdada(sig,alp), hm.g(sig,alp), si.alp**2)       
         print("Checking order of differentiation")
         reshape = np.einsum("ijk->kij",d2gdads(sig,alp))
         testch("d2gdsda",d2gdsda(sig,alp),"d2gdads(reshaped)", reshape,"order")
     if hasattr(hm, "y"):
+        print("y =",hm.y(eps,sig,alp,chi))
         print("Checking derivatives of y...")
-        testch1("dyde", udyde(eps,sig,alp,chi), adyde(eps,sig,alp,chi), ndyde(eps,sig,alp,chi))
-        testch1("dyds", udyds(eps,sig,alp,chi), adyds(eps,sig,alp,chi), ndyds(eps,sig,alp,chi))
-        testch1("dyda", udyda(eps,sig,alp,chi), adyda(eps,sig,alp,chi), ndyda(eps,sig,alp,chi))
-        testch1("dydc", udydc(eps,sig,alp,chi), adydc(eps,sig,alp,chi), ndydc(eps,sig,alp,chi))                
+        testch1("dyde", udyde(eps,sig,alp,chi), adyde(eps,sig,alp,chi), ndyde(eps,sig,alp,chi), hm.y(eps,sig,alp,chi), si.eps)
+        testch1("dyds", udyds(eps,sig,alp,chi), adyds(eps,sig,alp,chi), ndyds(eps,sig,alp,chi), hm.y(eps,sig,alp,chi), si.sig)
+        testch1("dyda", udyda(eps,sig,alp,chi), adyda(eps,sig,alp,chi), ndyda(eps,sig,alp,chi), hm.y(eps,sig,alp,chi), si.alp)
+        testch1("dydc", udydc(eps,sig,alp,chi), adydc(eps,sig,alp,chi), ndydc(eps,sig,alp,chi), hm.y(eps,sig,alp,chi), si.chi)                
     if hasattr(hm, "w"):
+        print("w =",hm.w(eps,sig,alp,chi))
         print("Checking derivative of w...")
-        testch1("dwdc", udwdc(eps,sig,alp,chi), adwdc(eps,sig,alp,chi), ndwdc(eps,sig,alp,chi))
+        testch1("dwdc", udwdc(eps,sig,alp,chi), adwdc(eps,sig,alp,chi), ndwdc(eps,sig,alp,chi), hm.w(eps,sig,alp,chi), si.chi)
         
     print("Checks complete for:",hj.model+",",
           Check.npass,"passed,",
@@ -1822,6 +2018,7 @@ def solve_L(yo, Lmatp, Lrhsp):
         if yo[N] > hj.ytol:                  # if this surface is yielding:
             Lmat[N] = Lmatp[N]               # over-write line in matrix and RHS with plastic solution
             Lrhs[N] = Lrhsp[N]
+    #print(Lmat)
     L = np.linalg.solve(Lmat, Lrhs)          # solve for plastic multipliers
     L = np.array([max(Lv, 0.0) for Lv in L]) # make plastic multipliers non-negative
     return L
@@ -2119,7 +2316,7 @@ def numdiff2_3(fun, var, alp, vari, alpi):
                 num[N,j,i] = (f1 - f2 - f3 + f4) / (4.0*vari*alpi)
     return num
 def numdiff2_4(fun, var, alp, alpi):
-    num = np.zeros([hj.n_int,hj.n_dim,hj.n_int,hj.n_dim])
+    num = np.zeros([hj.n_int, hj.n_dim, hj.n_int, hj.n_dim])
     for N in range(hj.n_int):
         for M in range(hj.n_int):
             for i in range(hj.n_dim):
@@ -2127,8 +2324,8 @@ def numdiff2_4(fun, var, alp, alpi):
                     if N==M and i==j:
                         alp1 = deepcopy(alp)
                         alp3 = deepcopy(alp)
-                        alp1[N,i] = alp[N,i] - alpi  
-                        alp3[N,i] = alp[N,i] + alpi
+                        alp1[N,i] += -alpi  
+                        alp3[N,i] +=  alpi
                         f1 = fun(var,alp1)
                         f2 = fun(var,alp)
                         f3 = fun(var,alp3)
@@ -2138,14 +2335,14 @@ def numdiff2_4(fun, var, alp, alpi):
                         alp2 = deepcopy(alp)
                         alp3 = deepcopy(alp)
                         alp4 = deepcopy(alp)
-                        alp1[N,i] = alp[N,i] - alpi  
-                        alp1[M,j] = alp[M,j] - alpi  
-                        alp2[N,i] = alp[N,i] - alpi  
-                        alp2[M,j] = alp[M,j] + alpi  
-                        alp3[N,i] = alp[N,i] + alpi  
-                        alp3[M,j] = alp[M,j] - alpi  
-                        alp4[N,i] = alp[N,i] + alpi  
-                        alp4[M,j] = alp[M,j] + alpi  
+                        alp1[N,i] += -alpi  
+                        alp1[M,j] += -alpi  
+                        alp2[N,i] += -alpi  
+                        alp2[M,j] +=  alpi  
+                        alp3[N,i] +=  alpi  
+                        alp3[M,j] += -alpi  
+                        alp4[N,i] +=  alpi  
+                        alp4[M,j] +=  alpi  
                         f1 = fun(var,alp1)
                         f2 = fun(var,alp2)
                         f3 = fun(var,alp3)
@@ -2609,8 +2806,13 @@ def strain_inc_f(deps, dt): # updated for weights
     Lmatp = -np.einsum(Ein.j, dyda_minus, rwtdydc_)
     #Lrhsp = hj.acc*yo + np.einsum(Ein.e, dyde_minus, deps)
     Lrhsp = hj.acc*yo + (dyde_minus @ deps)
+    if hasattr(hm, "wprime"):
+        rwtdwprimedc_ = weight_dwdc(dwprimedc(s.eps,s.sig,s.alp,s.chi))
+        Lrhsp += np.einsum("pnj,nj->p", dyda_minus, rwtdwprimedc_)*dt
     L     = solve_L(yo, Lmatp, Lrhsp)
     dalp  = np.einsum(Ein.d, L, rwtdydc_)
+    if hasattr(hm, "wprime"):
+        dalp += dwprimedc(s.eps,s.sig,s.alp,s.chi)*dt
     update_f(dt, deps, dalp)
 def stress_inc_g(dsig, dt): # updated for weights
     inc_mess("stress_inc_g")
@@ -2629,7 +2831,7 @@ def stress_inc_g(dsig, dt): # updated for weights
     dyda_minus = dyda_ - np.einsum(Ein.g,dyde_,d2gdsda_) - np.einsum(Ein.i, rwtdydc_, d2gdada_)
     Lmatp = -np.einsum(Ein.j, dyda_minus, rwtdydc_)
     #Lrhsp = hj.acc*yo + np.einsum(Ein.e, dyds_minus, dsig)
-    Lrhsp = hj.acc*yo + (dyds_minus @ dsig)
+    Lrhsp = hj.acc*yo + (dyds_minus @ dsig) # check this
     L     = solve_L(yo, Lmatp, Lrhsp)
     dalp  = np.einsum(Ein.d, L, rwtdydc_)
     update_g(dt, dsig, dalp)
@@ -2691,6 +2893,8 @@ def record(eps, sig):
     epso = eps_to_voigt(eps - hj.epsref) # convert if using Voigt option
     sigo = sig_to_voigt(sig)
     if hasattr(hm,"step_print"): hm.step_print(s.t,epso,sigo,s.alp,s.chi)
+    supp = []
+    if hasattr(hm,"deriv_supp"): supp = hm.deriv_supp(s.t,epso,sigo,s.alp,s.chi)
     if hj.recording:
         if np.isnan(epso).any() or np.isnan(sigo).any(): 
             result = False
@@ -2699,11 +2903,13 @@ def record(eps, sig):
                 sig_cauchyo = sig_to_voigt(hl.sig)
                 hj.rec[hj.curr_test].append(np.concatenate(([s.t], epso, sigo, sig_cauchyo,
                                                             s.alp.flatten(),
-                                                            s.chi.flatten())))
+                                                            s.chi.flatten(),
+                                                            supp)))
             else:
                 hj.rec[hj.curr_test].append(np.concatenate(([s.t], epso, sigo,
                                                             s.alp.flatten(),
-                                                            s.chi.flatten())))
+                                                            s.chi.flatten(),
+                                                            supp)))
     return result
 def delrec(): #delete one record
     del hj.rec[hj.curr_test][-1]
@@ -2748,11 +2954,14 @@ def plothigh(plt, x, y, col, highl, ax1, ax2):
     plt.set_ylabel(greek(ax2))
 
 def greek(name):
+    gnam = name.replace("alpha", r"$\alpha$")
+    gnam = name.replace("beta",  r"$\beta$")
     gnam = name.replace("gamma", r"$\gamma$")
     gnam = gnam.replace("eps",   r"$\epsilon$")
     gnam = gnam.replace("theta", r"$\theta$")
     gnam = gnam.replace("sig",   r"$\sigma$")
     gnam = gnam.replace("tau",   r"$\tau$")
+    gnam = gnam.replace("chi",   r"$\chi$")
     gnam = gnam.replace("Kap",   "K")
     gnam = gnam.replace("1",     r"$_1$")
     gnam = gnam.replace("2",     r"$_2$")
@@ -2762,15 +2971,25 @@ def greek(name):
     gnam = gnam.replace("_q",    r"$_q$")
     gnam = gnam.replace("_s",    r"$_s$")
     gnam = gnam.replace("_v",    r"$_v$")
+    gnam = gnam.replace("/deg",  "")
+    gnam = gnam.replace("/neg",  r"$_n$$_e$$_g$")
+    gnam = gnam.replace("/beta", r"$_\beta$")
+    gnam = gnam.replace("/pos",  r"$_p$$_o$$_s$")
     gnam = gnam.replace("sq",    r"$^2$")
     return gnam
     
-def results_graph(pname, axes, xsize, ysize):
+def results_graph(pname, axes, xsize, ysize, fix, xmin, xmax, ymin, ymax):
     if pname[-4:] != ".png": pname = pname + ".png"
     names = names_()
+    #print(names)
+    #print(axes)
     plt.rcParams["figure.figsize"] = (xsize,ysize)
     fig, ax = plt.subplots()
     plt.title(hj.title)
+    if fix:
+        ax.set_xlim(xmin,xmax)
+        ax.set_ylim(ymin,ymax)
+        plt.grid(linestyle='--')
     for i in range(len(hj.rec)):
         recl = hj.rec[i]
         for j in range(len(names)):
@@ -2789,45 +3008,74 @@ def results_graph(pname, axes, xsize, ysize):
             plothigh(ax, xt, yt, "g", hj.test_high, "", "")
     print("Graph of",axes[1],"v.",axes[0])
     plt.title(hj.title)
-    if pname != "null.png": plt.savefig(pname)
+    if pname != "null.png": plt.savefig(pname, bbox_inches="tight")
     plt.show()
 
 def names_(): # default variable names
+    names = []
     if hasattr(hm,"names"): 
-        return hm.names
+        names = deepcopy(hm.names)
     elif hj.n_dim == 1: 
-        return ["t","eps","sig"]   
+        names = ["t","eps","sig"]   
     elif hj.n_dim == 2: 
-        return ["t","eps1","eps2","sig1","sig2"]
+        names = ["t","eps1","eps2","sig1","sig2"]
     elif hj.n_dim == 3: 
-        return ["t","eps1","eps2","eps3","sig1","sig2","sig3"]
+        names = ["t","eps1","eps2","eps3","sig1","sig2","sig3"]
     elif hj.n_dim == 6: 
         if hj.large:
-            return ["t","H11",  "H22",  "H33",  "H23",  "H31",  "H12",
-                        "Kap11","Kap22","Kap33","Kap23","Kap31","Kap12",
-                        "sig11","sig22","sig33","tau23","tau31","tau12"]
+            names = ["t","H11",  "H22",  "H33",  "H23",  "H31",  "H12",
+                         "Kap11","Kap22","Kap33","Kap23","Kap31","Kap12",
+                         "sig11","sig22","sig33","tau23","tau31","tau12"]
         else:
-            return ["t","eps11","eps22","eps33","gam23","gam31","gam12",
-                        "sig11","sig22","sig33","tau23","tau31","tau12"]
+            names = ["t","eps11","eps22","eps33","gam23","gam31","gam12",
+                         "sig11","sig22","sig33","tau23","tau31","tau12"]
+    for i_int in range(hj.n_int):
+        for idim in range(hj.n_dim):
+            names.append("alp_"+str(i_int)+"_"+str(idim))
+    for i_int in range(hj.n_int):
+        for idim in range(hj.n_dim):
+            names.append("chi_"+str(i_int)+"_"+str(idim))
+    if hasattr(hm,"name_supp"): 
+        names = names + hm.name_supp
+    #print(names)
+    return names
 def units_():
+    units = []
     if hasattr(hm,"units"): # default variable units
-        return hm.units
+        units =  deepcopy(hm.units)
     elif hj.n_dim == 1: 
-        return ["s","-","Pa"]   
+        units = ["s","-","Pa"]   
     elif hj.n_dim == 2: 
-        return ["s","-","-","Pa","Pa"]   
+        units = ["s","-","-","Pa","Pa"]   
     elif hj.n_dim == 3: 
-        return ["s","-","-","-","Pa","Pa","Pa"]
+        units = ["s","-","-","-","Pa","Pa","Pa"]
     elif hj.n_dim == 6: 
         if hj.large:
-            return ["s","-","-","-","-","-","-",
+            units = ["s","-","-","-","-","-","-",
                         "msq/ssq","msq/ssq","msq/ssq","msq/ssq","msq/ssq","msq/ssq",
                         "Pa","Pa","Pa","Pa","Pa","Pa"]
         else:
-            return ["s","-", "-", "-", "-", "-", "-",
+            units = ["s","-", "-", "-", "-", "-", "-",
                         "Pa","Pa","Pa","Pa","Pa","Pa"]
+    for i_int in range(hj.n_int):
+        for idim in range(hj.n_dim):
+            units.append("-")
+    for i_int in range(hj.n_int):
+        for idim in range(hj.n_dim):
+            units.append("kPa")
+    if hasattr(hm,"unit_supp"): 
+        units = units + hm.unit_supp
+#    print(units)
+    return units
 def nunit(i):
-    return names_()[i] + " (" + units_()[i] + ")"
+    ntemp = names_()[i]
+    if hasattr(hm, "labels"):
+        if ntemp in hm.labels:
+            return hm.labels[ntemp] + " (" + units_()[i] + ")"
+        else:
+            return ntemp + " (" + units_()[i] + ")"
+    else:
+        return ntemp + " (" + units_()[i] + ")"
 
 def results_plot(pname="null.png"): # plots for ndim=2
     if pname[-4:] != ".png": pname = pname + ".png"
@@ -2927,10 +3175,10 @@ def calc_init(): # initialise the calculation
     print("Initialising calculation: n_dim =", hj.n_dim, 
                                   ", n_int =", hj.n_int, 
                                   ", n_y =",   hj.n_y)
-    s.sig = np.zeros(hj.n_dim)
-    s.eps = np.zeros(hj.n_dim)
-    s.alp = np.zeros([hj.n_int, hj.n_dim])
-    s.chi = np.zeros([hj.n_int, hj.n_dim])
+    eps = np.zeros(hj.n_dim)
+    sig = np.zeros(hj.n_dim)
+    alp = np.zeros([hj.n_int, hj.n_dim])
+    chi = np.zeros([hj.n_int, hj.n_dim])
     hl.sig = np.zeros(hj.n_dim)
     hj.epsref = np.zeros(hj.n_dim)
     if hasattr(hm, "rwt"):
@@ -2939,11 +3187,11 @@ def calc_init(): # initialise the calculation
     else:
         hj.rwt = np.ones(hj.n_int)
     hl.F = np.eye(3)
-    return s.sig, s.eps, s.chi, s.alp
+    return eps, sig, alp, chi 
 
 print("+-----------------------------------------------------------------------------+")
 print("| HyperDrive: driving routine for hyperplasticity models                      |")
-print("| (c) G.T. Houlsby, 2018-2024                                                 |")
+print("| (c) G.T. Houlsby, 2018-2025                                                 |")
 print("|                                                                             |")
 print("| \x1b[1;31mThis program is provided in good faith, but with no warranty of correctness\x1b[0m |")
 print("+-----------------------------------------------------------------------------+")
